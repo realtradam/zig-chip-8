@@ -4,6 +4,9 @@ const ray = @import("raylib.zig");
 //    @cInclude("raylib.h");
 //});
 
+const print = std.debug.print;
+const fs = std.fs;
+
 const screenWidth: u32 = 64 * 10;
 const screenHeight: u32 = (32 * 10) + 24;
 const RndGen = std.rand.DefaultPrng;
@@ -15,7 +18,7 @@ const Chip8 = struct {
     memory: [4096]u8 = [_]u8{0} ** 4096,
     V: [16]u8 = [_]u8{0} ** 16,
     I: u16 = 0,
-    pc: u16 = 0,
+    pc: u16 = 0x200,
     gfx: [64 * 32]bool = [_]bool{false} ** (64 * 32),
     delay_timer: u8 = 0,
     sound_timer: u8 = 0,
@@ -24,34 +27,127 @@ const Chip8 = struct {
     key: u8 = 0,
 
     pub fn new() Chip8 {
+        // TODO Initialize registers and memory once
         return Chip8{};
     }
 
-    pub fn load_game(file_name: []u8) []u8 {
-        // TODO: handle file reading here
-        //var file = try std.fs.cwd().openFile(file_name, .{});
-        //defer file.close();
-        return file_name;
+    pub fn load_game(self: *Chip8, file_name: []const u8) void {
+        const file = std.fs.cwd().openFile(file_name, .{ .mode = .read_write }) catch |err| {
+            print("{}\n", .{err});
+            return;
+        };
+        defer file.close();
+
+        var buf: [512 * 7]u8 = undefined;
+        const chars_read = file.readAll(&buf) catch |err| {
+            print("{}\n", .{err});
+            return;
+        };
+
+        print("{s}\n", .{buf});
+        for (buf) |char, index| {
+            if (index == chars_read) {
+                break;
+            }
+            print("{}: {}\n", .{ index, char });
+            self.*.memory[index + 512] = char;
+        }
+    }
+
+    pub fn emulate_cycles(self: *Chip8, cycles: u32) void {
+        var i: u32 = cycles;
+        while (i > 0) : (i -= 1) {
+            //print("{}\n", .{i});
+            // Fetch Opcode
+            self.*.opcode = @intCast(u16, self.*.memory[self.*.pc]) << 8 | self.*.memory[self.*.pc + 1];
+            // Decode Opcode
+            // Execute Opcode
+            switch (self.*.opcode & 0xF000) {
+                0x0000 => { // 00E0: Clear Screen
+                    self.*.gfx = [_]bool{false} ** (64 * 32);
+                    self.*.pc += 2;
+                },
+                0xA000 => { // ANNN: Set I to adress NNN
+                    self.*.I = self.*.opcode & 0x0FFF;
+                    self.*.pc += 2;
+                },
+                0x1000 => { // 1NNN: Jump to NNN
+                    //self.*.stack[self.*.sp] = self.*.pc;
+                    self.*.pc = self.*.opcode & 0x0FFF;
+                },
+                0x6000 => { // 6XNN: Set VX to NN
+                    self.*.V[@intCast(u8, self.*.opcode & 0x0F00 >> 8)] = @intCast(u8, self.*.opcode & 0x00FF);
+                    self.*.pc += 2;
+                },
+                0x7000 => { // 7XNN: Add NN to VX (dont change carry flag)
+                    self.*.V[@intCast(u8, self.*.opcode & 0x0F00 >> 8)] += @intCast(u8, self.*.opcode & 0x00FF);
+                    self.*.pc += 2;
+                },
+                0xD000 => { // DXYN: Draw a sprite
+                    const x: u16 = self.*.V[@intCast(u16, self.*.opcode & 0x0F00 >> 8)];
+                    const y: u16 = self.*.V[@intCast(u16, self.*.opcode & 0x00F0 >> 4)];
+                    const height: u16 = @intCast(u16, self.*.opcode & 0x000F);
+                    var pixel: u16 = undefined;
+
+                    self.*.V[0xF] = 0;
+                    var yline: u32 = 0;
+                    while (yline < height) : (yline += 1) {
+                        pixel = self.*.memory[self.*.I + yline];
+                        var xline: u32 = 0;
+                        while (xline < 8) : (xline += 1) {
+                            //while (times(&eight)) |width| {
+                            if ((pixel & (@intCast(u32, 0x80) >> @intCast(u5, xline))) != 0) {
+                                if (self.*.gfx[(x + xline + ((y + yline) * 64))] == true) {
+                                    self.*.V[0xF] = 1;
+                                }
+                                self.*.gfx[x + xline + ((y + yline) * 64)] = true;
+                            }
+                        }
+                    }
+                    self.*.pc += 2;
+                },
+                else => {
+                    // opcode not found
+                },
+            }
+            // Update timers
+            _ = self;
+        }
     }
 };
 
-var chip8 = Chip8{};
+var chip8 = Chip8.new();
 
-pub fn main() void {
+pub fn main() !void {
     setup_graphics();
     defer ray.CloseWindow();
     var exitWindow: bool = false;
+
+    chip8.load_game("roms/IBM_Logo.ch8");
 
     while (!ray.WindowShouldClose() and !exitWindow) {
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
-        ray.ClearBackground(ray.RAYWHITE);
         exitWindow = ray.GuiWindowBox(ray.Rectangle{ .x = 0, .y = 0, .height = screenHeight, .width = screenWidth }, "CHIP-8");
 
+        chip8.emulate_cycles(1);
+
         update_screen(&chip8_screen, chip8.gfx);
-        ray.DrawTextureEx(chip8_screen.texture, ray.Vector2{ .x = 0, .y = 24 }, 0, 10, ray.WHITE);
     }
+}
+
+fn pow(base: u32, power: u32) u32 {
+    var iter: u32 = 0;
+    var result: u32 = base;
+    while (iter < power) : (iter += 1) {
+        result = result * base;
+    }
+    return result;
+}
+
+fn get_coords(x: u32, y: u32) u32 {
+    return y * 64 + x;
 }
 
 fn setup_graphics() void {
@@ -63,22 +159,31 @@ fn setup_graphics() void {
 
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
     chip8_screen = ray.LoadRenderTexture(64, 32);
-    ray.SetTargetFPS(60);
+    ray.SetTargetFPS(6);
 }
 
 fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
+    ray.ClearBackground(ray.RAYWHITE);
     ray.BeginTextureMode(screen.*);
-    for (pixels) |_, index_usize| {
-        var rnd: u8 = Rnd.random().int(u8);
-        if (rnd < (256 / 2)) {
-            rnd = 255;
+    for (pixels) |pixel, index_usize| {
+        //var rnd: u8 = Rnd.random().int(u8);
+        //if (rnd < (256 / 2)) {
+        //    rnd = 255;
+        //} else {
+        //    rnd = 0;
+        //}
+
+        var on: u8 = undefined;
+        if (pixel) {
+            on = 255;
         } else {
-            rnd = 0;
+            on = 0;
         }
 
         var index: u32 = @intCast(u32, index_usize);
         //var index_char: u8 = @intCast(u8, @mod(@intCast(u32, index_usize), 256));
-        ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = rnd, .g = rnd, .b = rnd, .a = 255 });
+        ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = on, .g = on, .b = on, .a = 255 });
     }
     ray.EndTextureMode();
+    ray.DrawTextureEx(screen.texture, ray.Vector2{ .x = 0, .y = 24 }, 0, 10, ray.WHITE);
 }
