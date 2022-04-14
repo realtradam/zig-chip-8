@@ -1,0 +1,3 @@
+# Zig CHIP-8
+
+My in progress emulator(interpreter?) project for learning Zig :^)
