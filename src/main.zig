@@ -38,28 +38,27 @@ const Chip8 = struct {
         };
         defer file.close();
 
-        var buf: [512 * 7]u8 = undefined;
+        var buf: [512 * 7]u8 = undefined; // max memory size that can be loaded into CHIP-8
         const chars_read = file.readAll(&buf) catch |err| {
             print("{}\n", .{err});
             return;
         };
 
-        print("{s}\n", .{buf});
-        var length: u32 = 0;
+        //var length: u32 = 0;
         for (buf) |char, index| {
             if (index == chars_read) {
                 break;
             }
             self.*.memory[index + 512] = char;
-            length += 1;
+            //length += 1;
         }
-        length = (length + 514) / 2;
-        var iter: u32 = 510 / 2;
-        while (iter < length) {
-            defer iter += 1;
-            print("{}, {}: {x:0>4}\n", .{ iter * 2, iter * 2 + 1, @intCast(u16, self.*.memory[iter * 2]) << 8 | self.*.memory[iter * 2 + 1] });
-        }
-        print("\n\n", .{});
+        //length = (length + 514) / 2;
+        //var iter: u32 = 510 / 2;
+        //while (iter < length) {
+        //    defer iter += 1;
+        //    print("{}, {}: {x:0>4}\n", .{ iter * 2, iter * 2 + 1, @intCast(u16, self.*.memory[iter * 2]) << 8 | self.*.memory[iter * 2 + 1] });
+        //}
+        //print("\n\n", .{});
     }
 
     pub fn emulate_cycles(self: *Chip8, cycles: u32) void {
@@ -71,39 +70,37 @@ const Chip8 = struct {
             // Resolve Opcode
             switch (self.*.opcode & 0xF000) {
                 0x0000 => { // 00E0: Clear Screen
+                    defer print("\n", .{});
                     print("{x:0>4} - Clear Screen\n", .{self.*.opcode});
                     self.*.gfx = [_]bool{false} ** (64 * 32);
                     self.*.pc += 2;
-                    print("\n", .{});
                 },
                 0x1000 => { // 1NNN: Jump to NNN
+                    defer print("\n", .{});
                     print("{x:0>4} - Jump to 1NNN\n", .{self.*.opcode});
                     //self.*.stack[self.*.sp] = self.*.pc;
                     self.*.pc = @intCast(u12, self.*.opcode & 0x0FFF);
-                    print("\n", .{});
                 },
                 0x6000 => { // 6XNN: Set VX to NN
+                    defer print("\n", .{});
                     print("{x:0>4} - Set VX to 6XNN\n", .{self.*.opcode});
                     self.*.V[(self.*.opcode & 0x0F00) >> 8] = @intCast(u8, self.*.opcode & 0x00FF);
-                    print("set V{x:0>4} to {x:0>4}\n", .{ (self.*.opcode & 0x0F00) >> 8, @intCast(u8, self.*.opcode & 0x00FF) });
                     self.*.pc += 2;
-                    print("\n", .{});
                 },
                 0x7000 => { // 7XNN: Add NN to VX (dont change carry flag)
+                    defer print("\n", .{});
                     print("{x:0>4} - Add 7XNN to VX\n", .{self.*.opcode});
                     self.*.V[(self.*.opcode & 0x0F00) >> 8] += @intCast(u8, self.*.opcode & 0x00FF);
                     self.*.pc += 2;
-                    print("\n", .{});
                 },
                 0xA000 => { // ANNN: Set I to adress NNN
+                    defer print("\n", .{});
                     print("{x:0>4} - Set I to ANNN\n", .{self.*.opcode});
                     self.*.I = self.*.opcode & 0x0FFF;
-                    print("Wrote {x:0>4} to I\n", .{self.*.opcode & 0x0FFF});
-                    print("Check: {x:0>4}\n", .{self.*.I});
                     self.*.pc += 2;
-                    print("\n", .{});
                 },
                 0xD000 => { // DXYN: Draw a sprite
+                    defer print("\n", .{});
                     print("{x:0>4} - Draw Sprite DXYN\n", .{self.*.opcode});
 
                     const data = .{
@@ -131,16 +128,14 @@ const Chip8 = struct {
                                 self.*.V[0xF] = 0;
                             }
                         }
-                        print(" --\n\n", .{});
                     }
 
                     self.*.pc += 2;
-                    print("\n", .{});
                 },
                 else => {
+                    defer print("\n", .{});
                     // opcode not found
                     print("{x:0>4} - OPCODE NOT FOUND\n", .{self.*.opcode});
-                    print("\n", .{});
                 },
             }
             // Update timers
