@@ -45,56 +45,94 @@ const Chip8 = struct {
         };
 
         print("{s}\n", .{buf});
+        var length: u32 = 0;
         for (buf) |char, index| {
             if (index == chars_read) {
                 break;
             }
-            print("{}: {}\n", .{ index, char });
+            //print("{}: {x}\n", .{ index, char });
             self.*.memory[index + 512] = char;
+            length += 1;
         }
+        length = (length + 514) / 2;
+        var iter: u32 = 510 / 2;
+        while (iter < length) {
+            defer iter += 1;
+            print("{}, {}: {x:0>4}\n", .{ iter * 2, iter * 2 + 1, @intCast(u16, self.*.memory[iter * 2]) << 8 | self.*.memory[iter * 2 + 1] });
+        }
+        print("\n\n", .{});
     }
 
     pub fn emulate_cycles(self: *Chip8, cycles: u32) void {
         var i: u32 = cycles;
         while (i > 0) : (i -= 1) {
-            //print("{}\n", .{i});
             // Fetch Opcode
             self.*.opcode = @intCast(u16, self.*.memory[self.*.pc]) << 8 | self.*.memory[self.*.pc + 1];
             // Decode Opcode
             // Execute Opcode
             switch (self.*.opcode & 0xF000) {
                 0x0000 => { // 00E0: Clear Screen
+                    print("{x:0>4} - Clear Screen\n", .{self.*.opcode});
                     self.*.gfx = [_]bool{false} ** (64 * 32);
                     self.*.pc += 2;
-                },
-                0xA000 => { // ANNN: Set I to adress NNN
-                    self.*.I = self.*.opcode & 0x0FFF;
-                    self.*.pc += 2;
+                    print("\n", .{});
                 },
                 0x1000 => { // 1NNN: Jump to NNN
+                    print("{x:0>4} - Jump to 1NNN\n", .{self.*.opcode});
                     //self.*.stack[self.*.sp] = self.*.pc;
-                    self.*.pc = self.*.opcode & 0x0FFF;
+                    self.*.pc = @intCast(u12, self.*.opcode & 0x0FFF);
+                    print("\n", .{});
                 },
                 0x6000 => { // 6XNN: Set VX to NN
-                    self.*.V[@intCast(u8, self.*.opcode & 0x0F00 >> 8)] = @intCast(u8, self.*.opcode & 0x00FF);
+                    print("{x:0>4} - Set VX to 6XNN\n", .{self.*.opcode});
+                    self.*.V[(self.*.opcode & 0x0F00) >> 8] = @intCast(u8, self.*.opcode & 0x00FF);
+                    print("set V{x:0>4} to {x:0>4}\n", .{ (self.*.opcode & 0x0F00) >> 8, @intCast(u8, self.*.opcode & 0x00FF) });
                     self.*.pc += 2;
+                    print("\n", .{});
                 },
                 0x7000 => { // 7XNN: Add NN to VX (dont change carry flag)
-                    self.*.V[@intCast(u8, self.*.opcode & 0x0F00 >> 8)] += @intCast(u8, self.*.opcode & 0x00FF);
+                    print("{x:0>4} - Add 7XNN to VX\n", .{self.*.opcode});
+                    self.*.V[(self.*.opcode & 0x0F00) >> 8] += @intCast(u8, self.*.opcode & 0x00FF);
                     self.*.pc += 2;
+                    print("\n", .{});
+                },
+                0xA000 => { // ANNN: Set I to adress NNN
+                    print("{x:0>4} - Set I to ANNN\n", .{self.*.opcode});
+                    self.*.I = self.*.opcode & 0x0FFF;
+                    print("Wrote {x:0>4} to I\n", .{self.*.opcode & 0x0FFF});
+                    print("Check: {x:0>4}\n", .{self.*.I});
+                    self.*.pc += 2;
+                    print("\n", .{});
                 },
                 0xD000 => { // DXYN: Draw a sprite
-                    const x: u16 = self.*.V[@intCast(u16, self.*.opcode & 0x0F00 >> 8)];
-                    const y: u16 = self.*.V[@intCast(u16, self.*.opcode & 0x00F0 >> 4)];
-                    const height: u16 = @intCast(u16, self.*.opcode & 0x000F);
+                    print("{x:0>4} - Draw Sprite DXYN\n", .{self.*.opcode});
+                    const x: u16 = self.*.V[(self.*.opcode & 0x0F00) >> 8];
+                    const y: u16 = self.*.V[(self.*.opcode & 0x00F0) >> 4];
+                    const height: u16 = self.*.opcode & 0x000F;
                     var pixel: u16 = undefined;
+                    print("Opcode x:{x:0>4}\n", .{(self.*.opcode & 0x0F00)});
+                    print("Opcode y:{x:0>4}\n", .{(self.*.opcode & 0x00F0)});
+                    print("Vx:{x:0>4}\n", .{((self.*.opcode & 0x0F00) >> 8)});
+                    print("Vy:{x:0>4}\n", .{((self.*.opcode & 0x00F0) >> 4)});
+
+                    //print("x: {x}\ny: {x}\n\n", .{ x, y });
+                    //print("x: {x}\ny: {x}\n\n", .{
+                    //    @intCast(u16, self.*.opcode & 0x0F00 >> 8),
+                    //    @intCast(u16, self.*.opcode & 0x00F0 >> 4),
+                    //});
+                    //for (self.*.V) |v| {
+                    //print("{x} ", .{v});
+                    //}
+                    //print("\n", .{});
 
                     self.*.V[0xF] = 0;
                     var yline: u32 = 0;
-                    while (yline < height) : (yline += 1) {
+                    while (yline < height) {
+                        defer yline += 1;
                         pixel = self.*.memory[self.*.I + yline];
                         var xline: u32 = 0;
-                        while (xline < 8) : (xline += 1) {
+                        while (xline < 8) {
+                            defer xline += 1;
                             //while (times(&eight)) |width| {
                             if ((pixel & (@intCast(u32, 0x80) >> @intCast(u5, xline))) != 0) {
                                 if (self.*.gfx[(x + xline + ((y + yline) * 64))] == true) {
@@ -105,9 +143,12 @@ const Chip8 = struct {
                         }
                     }
                     self.*.pc += 2;
+                    print("\n", .{});
                 },
                 else => {
                     // opcode not found
+                    print("{x:0>4} - OPCODE NOT FOUND\n", .{self.*.opcode});
+                    print("\n", .{});
                 },
             }
             // Update timers
