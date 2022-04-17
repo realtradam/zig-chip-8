@@ -12,6 +12,12 @@ const screenHeight: u32 = (32 * 10) + 24;
 const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
+var shader: ray.Shader = undefined;
+var swirl_center_loc: c_int = undefined;
+var renderPoint_renderWidth: c_int = undefined;
+var renderPoint_renderHeight: c_int = undefined;
+
+var swirl_center = [_]u32{ screenWidth / 2, screenHeight / 2 };
 
 const Chip8 = struct {
     opcode: u16 = 0,
@@ -148,7 +154,7 @@ var chip8 = Chip8.new();
 
 pub fn main() !void {
     setup_graphics();
-    defer ray.CloseWindow();
+    defer close_graphics();
     var exitWindow: bool = false;
     const execute_delay = 4;
     var delay: u32 = 0;
@@ -187,8 +193,26 @@ fn get_coords(x: u32, y: u32) u32 {
 
 fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
-    chip8_screen = ray.LoadRenderTexture(64, 32);
+    chip8_screen = ray.LoadRenderTexture(64 * 3, 32 * 3);
+    //shader = ray.LoadShader(0, "shaders/glsl330/swirl.fs");
+    shader = ray.LoadShader(0, "shaders/test.fs");
+    //swirl_center_loc = ray.GetShaderLocation(shader, "center");
+    renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
+    renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
+    var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
+    var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
+    //ray.SetShaderValue(shader, swirl_center_loc, swirlCenter, ray.SHADER_UNIFORM_VEC2);
+    //const shaderwidth: c_ = @intToFloat(c_float, chip8_screen.texture.width
+    //ray.SetShaderValue(shader, renderPoint_renderWidth, &chip8_screen.texture.width, ray.SHADER_UNIFORM_FLOAT);
+    ray.SetShaderValue(shader, renderPoint_renderWidth, &renderVar_renderWidth, ray.SHADER_UNIFORM_FLOAT);
+    ray.SetShaderValue(shader, renderPoint_renderHeight, &renderVar_renderHeight, ray.SHADER_UNIFORM_FLOAT);
+    //ray.SetShaderValue(shader, renderPoint_renderHeight, chip8_screen.texture.height, ray.SHADER_UNIFORM_FLOAT);
     ray.SetTargetFPS(60);
+}
+
+fn close_graphics() void {
+    ray.UnloadShader(shader);
+    ray.CloseWindow();
 }
 
 fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
@@ -206,12 +230,14 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
         ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = on, .g = on, .b = on, .a = 255 });
     }
     ray.EndTextureMode();
+    ray.BeginShaderMode(shader);
     ray.DrawTexturePro(
         screen.texture,
-        ray.Rectangle{ .x = 0, .y = 0, .width = 64, .height = -32 },
+        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, screen.texture.width), .height = @intToFloat(f32, screen.texture.height) },
         ray.Rectangle{ .x = 0, .y = 24, .width = 64 * 10, .height = 32 * 10 },
         ray.Vector2{ .x = 0, .y = 0 },
         0,
         ray.WHITE,
     );
+    ray.EndShaderMode();
 }
