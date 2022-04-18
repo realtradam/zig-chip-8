@@ -16,6 +16,7 @@ var shader: ray.Shader = undefined;
 var swirl_center_loc: c_int = undefined;
 var renderPoint_renderWidth: c_int = undefined;
 var renderPoint_renderHeight: c_int = undefined;
+var shader_gridsize: f32 = 2.0;
 
 var swirl_center = [_]u32{ screenWidth / 2, screenHeight / 2 };
 
@@ -178,27 +179,20 @@ pub fn main() !void {
     }
 }
 
-fn pow(base: u32, power: u32) u32 {
-    var iter: u32 = 0;
-    var result: u32 = base;
-    while (iter < power) : (iter += 1) {
-        result = result * base;
-    }
-    return result;
-}
-
 fn get_coords(x: u32, y: u32) u32 {
     return y * 64 + x;
 }
 
 fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
-    chip8_screen = ray.LoadRenderTexture(64 * 3, 32 * 3);
+    chip8_screen = ray.LoadRenderTexture(64 * @floatToInt(c_int, shader_gridsize + 1), 32 * @floatToInt(c_int, shader_gridsize + 1));
     //shader = ray.LoadShader(0, "shaders/glsl330/swirl.fs");
     shader = ray.LoadShader(0, "shaders/test.fs");
     //swirl_center_loc = ray.GetShaderLocation(shader, "center");
     renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
     renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
+    var shader_gridsizeLocation = ray.GetShaderLocation(shader, "grid_size");
+
     var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
     var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
     //ray.SetShaderValue(shader, swirl_center_loc, swirlCenter, ray.SHADER_UNIFORM_VEC2);
@@ -206,6 +200,7 @@ fn setup_graphics() void {
     //ray.SetShaderValue(shader, renderPoint_renderWidth, &chip8_screen.texture.width, ray.SHADER_UNIFORM_FLOAT);
     ray.SetShaderValue(shader, renderPoint_renderWidth, &renderVar_renderWidth, ray.SHADER_UNIFORM_FLOAT);
     ray.SetShaderValue(shader, renderPoint_renderHeight, &renderVar_renderHeight, ray.SHADER_UNIFORM_FLOAT);
+    ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
     //ray.SetShaderValue(shader, renderPoint_renderHeight, chip8_screen.texture.height, ray.SHADER_UNIFORM_FLOAT);
     ray.SetTargetFPS(60);
 }
