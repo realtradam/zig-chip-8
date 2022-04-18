@@ -8,7 +8,7 @@ const print = std.debug.print;
 const fs = std.fs;
 
 const screenWidth: u32 = 64 * 10;
-const screenHeight: u32 = (32 * 10) + 24;
+const screenHeight: u32 = (32 * 10) + 24 + 60;
 const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
@@ -16,7 +16,11 @@ var shader: ray.Shader = undefined;
 var swirl_center_loc: c_int = undefined;
 var renderPoint_renderWidth: c_int = undefined;
 var renderPoint_renderHeight: c_int = undefined;
-var shader_gridsize: f32 = 2.0;
+var shader_gridsizeLocation: c_int = undefined;
+var shader_gridsize: f32 = 1.0;
+var slider: f32 = 100;
+const slider_max: f32 = 150;
+const slider_min: f32 = 50;
 
 var swirl_center = [_]u32{ screenWidth / 2, screenHeight / 2 };
 
@@ -163,10 +167,14 @@ pub fn main() !void {
     chip8.load_game("roms/IBM_Logo.ch8");
 
     while (!ray.WindowShouldClose() and !exitWindow) {
+        shader_gridsize = slider / 100.0;
+        ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
         exitWindow = ray.GuiWindowBox(ray.Rectangle{ .x = 0, .y = 0, .height = screenHeight, .width = screenWidth }, "CHIP-8");
+
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * 10 + 24 + 10, .width = 64 * 8, .height = 30 }, "Pixel Size", "", slider, 50, 150);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -185,13 +193,13 @@ fn get_coords(x: u32, y: u32) u32 {
 
 fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
-    chip8_screen = ray.LoadRenderTexture(64 * @floatToInt(c_int, shader_gridsize + 1), 32 * @floatToInt(c_int, shader_gridsize + 1));
+    chip8_screen = ray.LoadRenderTexture(64, 32);
     //shader = ray.LoadShader(0, "shaders/glsl330/swirl.fs");
     shader = ray.LoadShader(0, "shaders/test.fs");
     //swirl_center_loc = ray.GetShaderLocation(shader, "center");
     renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
     renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
-    var shader_gridsizeLocation = ray.GetShaderLocation(shader, "grid_size");
+    shader_gridsizeLocation = ray.GetShaderLocation(shader, "grid_size");
 
     var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
     var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
