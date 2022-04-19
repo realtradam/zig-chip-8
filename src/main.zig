@@ -6,23 +6,58 @@ const ray = @import("raylib.zig");
 
 const print = std.debug.print;
 const fs = std.fs;
+const fmt = std.fmt;
 
 const screenWidth: u32 = 64 * 10;
 const screenHeight: u32 = (32 * 10) + 24 + 60;
 const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
-var shader: ray.Shader = undefined;
-var swirl_center_loc: c_int = undefined;
-var renderPoint_renderWidth: c_int = undefined;
-var renderPoint_renderHeight: c_int = undefined;
-var shader_gridsizeLocation: c_int = undefined;
-var shader_gridsize: f32 = 1.0;
+var shader_pixalizer: ShaderPixalizer = undefined;
 var slider: f32 = 100;
 const slider_max: f32 = 150;
 const slider_min: f32 = 50;
 
-var swirl_center = [_]u32{ screenWidth / 2, screenHeight / 2 };
+const ShaderPixalizer = struct {
+    shader: ray.Shader = undefined,
+    grid_size: f32 = 1.0,
+    grid_size_location: c_int = undefined,
+    texture_width: f32 = 64.0,
+    texture_width_location: c_int = undefined,
+    texture_height: f32 = 32.0,
+    texture_height_location: c_int = undefined,
+
+    pub fn new(shader_val: ray.Shader) ShaderPixalizer {
+        const temp_grid_size_loc = ray.GetShaderLocation(shader_val, "grid_size");
+        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
+        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
+        var result = ShaderPixalizer{
+            .shader = shader_val,
+            .grid_size_location = temp_grid_size_loc,
+            .texture_width_location = temp_texture_width_loc,
+            .texture_height_location = temp_texture_height_loc,
+        };
+        //var result.texture_width: f32 = 64.0 * 3.0;
+        //var temp_shader_texture_height: f32 = 32.0;
+
+        ray.SetShaderValue(result.shader, result.grid_size_location, &result.grid_size, ray.SHADER_UNIFORM_FLOAT);
+        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
+        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
+        return result;
+    }
+
+    pub fn set_grid_size(self: *ShaderPixalizer, new_grid_size: f32) f32 {
+        self.*.grid_size = new_grid_size;
+        ray.SetShaderValue(self.*.shader, self.*.grid_size_location, &self.*.grid_size, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.grid_size;
+    }
+
+    pub fn set_render_width(self: *ShaderPixalizer, new_grid_size: f32) f32 {
+        self.*.grid_size = new_grid_size;
+        ray.SetShaderValue(self.*.shader, self.*.grid_size_location, &self.*.grid_size, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.grid_size;
+    }
+};
 
 const Chip8 = struct {
     opcode: u16 = 0,
@@ -167,14 +202,19 @@ pub fn main() !void {
     chip8.load_game("roms/IBM_Logo.ch8");
 
     while (!ray.WindowShouldClose() and !exitWindow) {
-        shader_gridsize = slider / 100.0;
-        ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
+        _ = shader_pixalizer.set_grid_size(slider / 100.0);
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
         exitWindow = ray.GuiWindowBox(ray.Rectangle{ .x = 0, .y = 0, .height = screenHeight, .width = screenWidth }, "CHIP-8");
 
-        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * 10 + 24 + 10, .width = 64 * 8, .height = 30 }, "Pixel Size", "", slider, 50, 150);
+        var slider_buf: [4]u8 = undefined;
+        const slider_str = fmt.bufPrint(&slider_buf, "{d:02.2}", .{slider / 100.0}) catch |err| {
+            print("{}\n", .{err});
+            return;
+        };
+
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * 10 + 24 + 10, .width = 64 * 8, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, 50, 150);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -194,27 +234,23 @@ fn get_coords(x: u32, y: u32) u32 {
 fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
     chip8_screen = ray.LoadRenderTexture(64, 32);
-    //shader = ray.LoadShader(0, "shaders/glsl330/swirl.fs");
-    shader = ray.LoadShader(0, "shaders/test.fs");
-    //swirl_center_loc = ray.GetShaderLocation(shader, "center");
-    renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
-    renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
-    shader_gridsizeLocation = ray.GetShaderLocation(shader, "grid_size");
+    shader_pixalizer = ShaderPixalizer.new(ray.LoadShader(0, "shaders/pixalizer.fs"));
+    //renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
+    //renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
 
-    var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
-    var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
-    //ray.SetShaderValue(shader, swirl_center_loc, swirlCenter, ray.SHADER_UNIFORM_VEC2);
+    //var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
+    //var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
     //const shaderwidth: c_ = @intToFloat(c_float, chip8_screen.texture.width
     //ray.SetShaderValue(shader, renderPoint_renderWidth, &chip8_screen.texture.width, ray.SHADER_UNIFORM_FLOAT);
-    ray.SetShaderValue(shader, renderPoint_renderWidth, &renderVar_renderWidth, ray.SHADER_UNIFORM_FLOAT);
-    ray.SetShaderValue(shader, renderPoint_renderHeight, &renderVar_renderHeight, ray.SHADER_UNIFORM_FLOAT);
-    ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
+    //ray.SetShaderValue(shader, renderPoint_renderWidth, &renderVar_renderWidth, ray.SHADER_UNIFORM_FLOAT);
+    //ray.SetShaderValue(shader, renderPoint_renderHeight, &renderVar_renderHeight, ray.SHADER_UNIFORM_FLOAT);
+    //ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
     //ray.SetShaderValue(shader, renderPoint_renderHeight, chip8_screen.texture.height, ray.SHADER_UNIFORM_FLOAT);
     ray.SetTargetFPS(60);
 }
 
 fn close_graphics() void {
-    ray.UnloadShader(shader);
+    ray.UnloadShader(shader_pixalizer.shader);
     ray.CloseWindow();
 }
 
@@ -233,7 +269,7 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
         ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = on, .g = on, .b = on, .a = 255 });
     }
     ray.EndTextureMode();
-    ray.BeginShaderMode(shader);
+    ray.BeginShaderMode(shader_pixalizer.shader);
     ray.DrawTexturePro(
         screen.texture,
         ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, screen.texture.width), .height = @intToFloat(f32, screen.texture.height) },

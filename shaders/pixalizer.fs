@@ -5,7 +5,6 @@
 // Input vertex attributes (from vertex shader)
 in vec2 fragTexCoord;
 in vec4 fragColor;
-vec2 flipped = vec2(fragTexCoord.x, 1 - fragTexCoord.y);
 
 // Input uniform values
 uniform sampler2D texture0;
@@ -14,12 +13,15 @@ uniform vec4 colDiffuse;
 // Output fragment color
 out vec4 finalColor;
 
-// NOTE: Add here your custom variables
+// Imported variables from code
 uniform float renderWidth;
 uniform float renderHeight;
-vec2 textureResolution = vec2(renderWidth, renderHeight);
 uniform float grid_size;
-//vec2 onePixel = vec2(1.0, 1.0) / textureResolution;
+
+// Variable set up
+vec2 flipped = vec2(fragTexCoord.x, 1 - fragTexCoord.y); // flipping
+vec2 textureResolution = vec2(renderWidth, renderHeight);
+//vec2 onePixel = vec2(1.0, 1.0) / textureResolution; // distance of a single pixel in texels
 vec2 pixelCoor = flipped * textureResolution;
 
 float gridify(float coordinate, float spacing) {
@@ -37,6 +39,5 @@ void main()
 	texelColor.rbg *= is_pixel(pixelCoor, grid_size);
 
     // NOTE: Implement here your fragment shader code
-
     finalColor = texelColor*colDiffuse;
 }
