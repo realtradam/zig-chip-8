@@ -8,21 +8,61 @@ const print = std.debug.print;
 const fs = std.fs;
 const fmt = std.fmt;
 
-const screenWidth: u32 = 64 * 10;
-const screenHeight: u32 = (32 * 10) + 24 + 60;
+const scale: u32 = 15;
+
+const screenWidth: u32 = 64 * scale;
+const screenHeight: u32 = (32 * scale) + 24 + 60;
 const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
+var temp_canvas: ray.RenderTexture = undefined;
+var shader_colour_splitter: ShaderColourSplitter = undefined;
 var shader_pixalizer: ShaderPixalizer = undefined;
-var slider: f32 = 100;
+var slider: f32 = 135.0;
 const slider_max: f32 = 150;
 const slider_min: f32 = 50;
+
+const ShaderColourSplitter = struct {
+    shader: ray.Shader = undefined,
+    texture_width: f32 = 64.0,
+    texture_width_location: c_int = undefined,
+    texture_height: f32 = 32.0,
+    texture_height_location: c_int = undefined,
+
+    pub fn new(shader_val: ray.Shader) ShaderColourSplitter {
+        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
+        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
+        var result = ShaderColourSplitter{
+            .shader = shader_val,
+            .texture_width_location = temp_texture_width_loc,
+            .texture_height_location = temp_texture_height_loc,
+        };
+        //var result.texture_width: f32 = 64.0 * 3.0;
+        //var temp_shader_texture_height: f32 = 32.0;
+
+        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
+        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
+        return result;
+    }
+
+    pub fn set_render_width(self: *ShaderPixalizer, new_render_width: f32) f32 {
+        self.*.render_width = new_render_width;
+        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_width;
+    }
+
+    pub fn set_render_height(self: *ShaderPixalizer, new_render_height: f32) f32 {
+        self.*.render_height = new_render_height;
+        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_height;
+    }
+};
 
 const ShaderPixalizer = struct {
     shader: ray.Shader = undefined,
     grid_size: f32 = 1.0,
     grid_size_location: c_int = undefined,
-    texture_width: f32 = 64.0,
+    texture_width: f32 = 64.0 * 3.0, // this makes it split by 3 per pixel instead of 1 per pixel
     texture_width_location: c_int = undefined,
     texture_height: f32 = 32.0,
     texture_height_location: c_int = undefined,
@@ -37,8 +77,6 @@ const ShaderPixalizer = struct {
             .texture_width_location = temp_texture_width_loc,
             .texture_height_location = temp_texture_height_loc,
         };
-        //var result.texture_width: f32 = 64.0 * 3.0;
-        //var temp_shader_texture_height: f32 = 32.0;
 
         ray.SetShaderValue(result.shader, result.grid_size_location, &result.grid_size, ray.SHADER_UNIFORM_FLOAT);
         ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
@@ -52,10 +90,16 @@ const ShaderPixalizer = struct {
         return self.*.grid_size;
     }
 
-    pub fn set_render_width(self: *ShaderPixalizer, new_grid_size: f32) f32 {
-        self.*.grid_size = new_grid_size;
-        ray.SetShaderValue(self.*.shader, self.*.grid_size_location, &self.*.grid_size, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.grid_size;
+    pub fn set_render_width(self: *ShaderPixalizer, new_render_width: f32) f32 {
+        self.*.render_width = new_render_width;
+        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_width;
+    }
+
+    pub fn set_render_height(self: *ShaderPixalizer, new_render_height: f32) f32 {
+        self.*.render_height = new_render_height;
+        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_height;
     }
 };
 
@@ -214,7 +258,7 @@ pub fn main() !void {
             return;
         };
 
-        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * 10 + 24 + 10, .width = 64 * 8, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, 50, 150);
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, 50, 150);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -234,18 +278,10 @@ fn get_coords(x: u32, y: u32) u32 {
 fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
     chip8_screen = ray.LoadRenderTexture(64, 32);
+    temp_canvas = ray.LoadRenderTexture(64 * scale, 32 * scale);
+    shader_colour_splitter = ShaderColourSplitter.new(ray.LoadShader(0, "shaders/colour_splitter.fs"));
     shader_pixalizer = ShaderPixalizer.new(ray.LoadShader(0, "shaders/pixalizer.fs"));
-    //renderPoint_renderHeight = ray.GetShaderLocation(shader, "renderHeight");
-    //renderPoint_renderWidth = ray.GetShaderLocation(shader, "renderWidth");
 
-    //var renderVar_renderWidth: f32 = @intToFloat(f32, chip8_screen.texture.width);
-    //var renderVar_renderHeight: f32 = @intToFloat(f32, chip8_screen.texture.height);
-    //const shaderwidth: c_ = @intToFloat(c_float, chip8_screen.texture.width
-    //ray.SetShaderValue(shader, renderPoint_renderWidth, &chip8_screen.texture.width, ray.SHADER_UNIFORM_FLOAT);
-    //ray.SetShaderValue(shader, renderPoint_renderWidth, &renderVar_renderWidth, ray.SHADER_UNIFORM_FLOAT);
-    //ray.SetShaderValue(shader, renderPoint_renderHeight, &renderVar_renderHeight, ray.SHADER_UNIFORM_FLOAT);
-    //ray.SetShaderValue(shader, shader_gridsizeLocation, &shader_gridsize, ray.SHADER_UNIFORM_FLOAT);
-    //ray.SetShaderValue(shader, renderPoint_renderHeight, chip8_screen.texture.height, ray.SHADER_UNIFORM_FLOAT);
     ray.SetTargetFPS(60);
 }
 
@@ -269,11 +305,25 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
         ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = on, .g = on, .b = on, .a = 255 });
     }
     ray.EndTextureMode();
+
+    ray.BeginTextureMode(temp_canvas);
     ray.BeginShaderMode(shader_pixalizer.shader);
     ray.DrawTexturePro(
         screen.texture,
         ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, screen.texture.width), .height = @intToFloat(f32, screen.texture.height) },
-        ray.Rectangle{ .x = 0, .y = 24, .width = 64 * 10, .height = 32 * 10 },
+        ray.Rectangle{ .x = 0, .y = 0, .width = 64 * scale, .height = 32 * scale },
+        ray.Vector2{ .x = 0, .y = 0 },
+        0,
+        ray.WHITE,
+    );
+    ray.EndShaderMode();
+    ray.EndTextureMode();
+
+    ray.BeginShaderMode(shader_colour_splitter.shader);
+    ray.DrawTexturePro(
+        temp_canvas.texture,
+        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
+        ray.Rectangle{ .x = 0, .y = 24, .width = 64 * scale, .height = 32 * scale },
         ray.Vector2{ .x = 0, .y = 0 },
         0,
         ray.WHITE,

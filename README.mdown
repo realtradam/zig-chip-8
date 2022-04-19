@@ -3,3 +3,5 @@
 My in progress emulator(interpreter?) project for learning Zig :^)
 
 Currently has only enough Opcodes implemented to run the basic IBM example (^:
+
+Has some very nice custom made shaders which give it that retro feel :D
