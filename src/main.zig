@@ -16,12 +16,26 @@ const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
 var temp_canvas: ray.RenderTexture = undefined;
-var shader_stretcher: ShaderStretcher = undefined;
+var shader_stretcher: Shader = undefined;
+var shader_stretcher_stretch_amount: c_int = undefined;
 var shader_colour_splitter: ShaderColourSplitter = undefined;
 var shader_pixalizer: ShaderPixalizer = undefined;
 var slider: f32 = 0;
 const slider_max: f32 = 0;
 const slider_min: f32 = -250;
+
+const Shader = struct {
+    shader: ray.Shader = undefined,
+
+    pub fn new(p_shader: ray.Shader) Shader {
+        return Shader{ .shader = p_shader };
+    }
+
+    pub fn set_float(self: *Shader, p_id: c_int, p_new_val: f32) void {
+        //const temp_var_id = ray.GetShaderLocation(self.*.shader, p_var_name);
+        ray.SetShaderValue(self.*.shader, p_id, &p_new_val, ray.SHADER_UNIFORM_FLOAT);
+    }
+};
 
 const ShaderStretcher = struct {
     shader: ray.Shader = undefined,
@@ -293,7 +307,8 @@ pub fn main() !void {
 
     while (!ray.WindowShouldClose() and !exitWindow) {
         _ = shader_pixalizer.set_grid_size(1.35);
-        _ = shader_stretcher.set_stretch_amount(slider / 100.0);
+        //_ = shader_stretcher.set_stretch_amount(slider / 100.0);
+        shader_stretcher.set_float(shader_stretcher_stretch_amount, slider / 100.0);
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
@@ -326,7 +341,13 @@ fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
     chip8_screen = ray.LoadRenderTexture(64, 32);
     temp_canvas = ray.LoadRenderTexture(64 * scale, 32 * scale);
-    shader_stretcher = ShaderStretcher.new(ray.LoadShader(0, "shaders/stretcher.fs"));
+
+    shader_stretcher = Shader.new(ray.LoadShader(0, "shaders/stretcher.fs"));
+    shader_stretcher_stretch_amount = ray.GetShaderLocation(shader_stretcher.shader, "stretch_amount");
+    shader_stretcher.set_float(ray.GetShaderLocation(shader_stretcher.shader, "renderWidth"), 64.0);
+    shader_stretcher.set_float(ray.GetShaderLocation(shader_stretcher.shader, "renderHeight"), 32.0);
+    shader_stretcher.set_float(shader_stretcher_stretch_amount, slider / 100.0);
+
     shader_colour_splitter = ShaderColourSplitter.new(ray.LoadShader(0, "shaders/colour_splitter.fs"));
     shader_pixalizer = ShaderPixalizer.new(ray.LoadShader(0, "shaders/pixalizer.fs"));
 
