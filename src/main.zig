@@ -16,11 +16,57 @@ const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
 var chip8_screen: ray.RenderTexture = undefined;
 var temp_canvas: ray.RenderTexture = undefined;
+var shader_stretcher: ShaderStretcher = undefined;
 var shader_colour_splitter: ShaderColourSplitter = undefined;
 var shader_pixalizer: ShaderPixalizer = undefined;
-var slider: f32 = 135.0;
-const slider_max: f32 = 150;
-const slider_min: f32 = 50;
+var slider: f32 = 0;
+const slider_max: f32 = 0;
+const slider_min: f32 = -250;
+
+const ShaderStretcher = struct {
+    shader: ray.Shader = undefined,
+    stretch_amount: f32 = 1.0,
+    stretch_amount_location: c_int = undefined,
+    texture_width: f32 = 64.0,
+    texture_width_location: c_int = undefined,
+    texture_height: f32 = 32.0,
+    texture_height_location: c_int = undefined,
+
+    pub fn new(shader_val: ray.Shader) ShaderStretcher {
+        const temp_stretch_amount_loc = ray.GetShaderLocation(shader_val, "stretch_amount");
+        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
+        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
+        var result = ShaderStretcher{
+            .shader = shader_val,
+            .stretch_amount_location = temp_stretch_amount_loc,
+            .texture_width_location = temp_texture_width_loc,
+            .texture_height_location = temp_texture_height_loc,
+        };
+
+        ray.SetShaderValue(result.shader, result.stretch_amount_location, &result.stretch_amount, ray.SHADER_UNIFORM_FLOAT);
+        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
+        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
+        return result;
+    }
+
+    pub fn set_stretch_amount(self: *ShaderStretcher, new_grid_size: f32) f32 {
+        self.*.stretch_amount = new_grid_size;
+        ray.SetShaderValue(self.*.shader, self.*.stretch_amount_location, &self.*.stretch_amount, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.stretch_amount;
+    }
+
+    pub fn set_render_width(self: *ShaderStretcher, new_render_width: f32) f32 {
+        self.*.render_width = new_render_width;
+        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_width;
+    }
+
+    pub fn set_render_height(self: *ShaderStretcher, new_render_height: f32) f32 {
+        self.*.render_height = new_render_height;
+        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
+        return self.*.render_height;
+    }
+};
 
 const ShaderColourSplitter = struct {
     shader: ray.Shader = undefined,
@@ -246,19 +292,20 @@ pub fn main() !void {
     chip8.load_game("roms/IBM_Logo.ch8");
 
     while (!ray.WindowShouldClose() and !exitWindow) {
-        _ = shader_pixalizer.set_grid_size(slider / 100.0);
+        _ = shader_pixalizer.set_grid_size(1.35);
+        _ = shader_stretcher.set_stretch_amount(slider / 100.0);
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
         exitWindow = ray.GuiWindowBox(ray.Rectangle{ .x = 0, .y = 0, .height = screenHeight, .width = screenWidth }, "CHIP-8");
 
-        var slider_buf: [4]u8 = undefined;
+        var slider_buf: [5]u8 = undefined;
         const slider_str = fmt.bufPrint(&slider_buf, "{d:02.2}", .{slider / 100.0}) catch |err| {
             print("{}\n", .{err});
             return;
         };
 
-        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, 50, 150);
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, slider_min, slider_max);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -279,6 +326,7 @@ fn setup_graphics() void {
     ray.InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
     chip8_screen = ray.LoadRenderTexture(64, 32);
     temp_canvas = ray.LoadRenderTexture(64 * scale, 32 * scale);
+    shader_stretcher = ShaderStretcher.new(ray.LoadShader(0, "shaders/stretcher.fs"));
     shader_colour_splitter = ShaderColourSplitter.new(ray.LoadShader(0, "shaders/colour_splitter.fs"));
     shader_pixalizer = ShaderPixalizer.new(ray.LoadShader(0, "shaders/pixalizer.fs"));
 
@@ -304,6 +352,7 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
         var index: u32 = @intCast(u32, index_usize);
         ray.DrawRectangleRec(ray.Rectangle{ .x = @intToFloat(f32, @mod(index, 64)), .y = @intToFloat(f32, (index / 64)), .width = 1, .height = 1 }, ray.Color{ .r = on, .g = on, .b = on, .a = 255 });
     }
+    //ray.DrawRectangleRec(ray.Rectangle{ .x = 0, .y = 0, .width = 64, .height = 32 }, ray.WHITE);
     ray.EndTextureMode();
 
     ray.BeginTextureMode(temp_canvas);
@@ -319,7 +368,20 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
     ray.EndShaderMode();
     ray.EndTextureMode();
 
+    ray.BeginTextureMode(temp_canvas);
     ray.BeginShaderMode(shader_colour_splitter.shader);
+    ray.DrawTexturePro(
+        temp_canvas.texture,
+        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
+        ray.Rectangle{ .x = 0, .y = 24, .width = 64 * scale, .height = 32 * scale },
+        ray.Vector2{ .x = 0, .y = 0 },
+        0,
+        ray.WHITE,
+    );
+    ray.EndShaderMode();
+    ray.EndTextureMode();
+
+    ray.BeginShaderMode(shader_stretcher.shader);
     ray.DrawTexturePro(
         temp_canvas.texture,
         ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
