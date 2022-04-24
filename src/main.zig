@@ -9,157 +9,47 @@ const fs = std.fs;
 const fmt = std.fmt;
 
 const scale: u32 = 15;
-
 const screenWidth: u32 = 64 * scale;
 const screenHeight: u32 = (32 * scale) + 24 + 60;
+
 const RndGen = std.rand.DefaultPrng;
 var Rnd = RndGen.init(0);
+
+const allocator = std.heap.page_allocator;
+
 var chip8_screen: ray.RenderTexture = undefined;
 var temp_canvas: ray.RenderTexture = undefined;
+
 var shader_stretcher: Shader = undefined;
-var shader_stretcher_stretch_amount: c_int = undefined;
-var shader_colour_splitter: ShaderColourSplitter = undefined;
-var shader_pixalizer: ShaderPixalizer = undefined;
+var shader_colour_splitter: Shader = undefined;
+var shader_pixalizer: Shader = undefined;
+
 var slider: f32 = 0;
 const slider_max: f32 = 0;
 const slider_min: f32 = -250;
 
 const Shader = struct {
     shader: ray.Shader = undefined,
+    id_cache: std.StringHashMap(c_int) = undefined,
 
-    pub fn new(p_shader: ray.Shader) Shader {
-        return Shader{ .shader = p_shader };
+    pub fn new(p_shader: ray.Shader, p_allocator: std.mem.Allocator) Shader {
+        return Shader{
+            .shader = p_shader,
+            .id_cache = std.StringHashMap(c_int).init(p_allocator),
+        };
     }
 
-    pub fn set_float(self: *Shader, p_id: c_int, p_new_val: f32) void {
+    pub fn set_float(self: *Shader, p_id: []const u8, p_new_val: f32) void {
         //const temp_var_id = ray.GetShaderLocation(self.*.shader, p_var_name);
-        ray.SetShaderValue(self.*.shader, p_id, &p_new_val, ray.SHADER_UNIFORM_FLOAT);
-    }
-};
-
-const ShaderStretcher = struct {
-    shader: ray.Shader = undefined,
-    stretch_amount: f32 = 1.0,
-    stretch_amount_location: c_int = undefined,
-    texture_width: f32 = 64.0,
-    texture_width_location: c_int = undefined,
-    texture_height: f32 = 32.0,
-    texture_height_location: c_int = undefined,
-
-    pub fn new(shader_val: ray.Shader) ShaderStretcher {
-        const temp_stretch_amount_loc = ray.GetShaderLocation(shader_val, "stretch_amount");
-        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
-        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
-        var result = ShaderStretcher{
-            .shader = shader_val,
-            .stretch_amount_location = temp_stretch_amount_loc,
-            .texture_width_location = temp_texture_width_loc,
-            .texture_height_location = temp_texture_height_loc,
+        //[*c]const u8
+        var i_id = self.*.id_cache.getOrPut(p_id) catch |err| {
+            print("{}\n", .{err});
+            return;
         };
-
-        ray.SetShaderValue(result.shader, result.stretch_amount_location, &result.stretch_amount, ray.SHADER_UNIFORM_FLOAT);
-        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
-        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
-        return result;
-    }
-
-    pub fn set_stretch_amount(self: *ShaderStretcher, new_grid_size: f32) f32 {
-        self.*.stretch_amount = new_grid_size;
-        ray.SetShaderValue(self.*.shader, self.*.stretch_amount_location, &self.*.stretch_amount, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.stretch_amount;
-    }
-
-    pub fn set_render_width(self: *ShaderStretcher, new_render_width: f32) f32 {
-        self.*.render_width = new_render_width;
-        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_width;
-    }
-
-    pub fn set_render_height(self: *ShaderStretcher, new_render_height: f32) f32 {
-        self.*.render_height = new_render_height;
-        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_height;
-    }
-};
-
-const ShaderColourSplitter = struct {
-    shader: ray.Shader = undefined,
-    texture_width: f32 = 64.0,
-    texture_width_location: c_int = undefined,
-    texture_height: f32 = 32.0,
-    texture_height_location: c_int = undefined,
-
-    pub fn new(shader_val: ray.Shader) ShaderColourSplitter {
-        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
-        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
-        var result = ShaderColourSplitter{
-            .shader = shader_val,
-            .texture_width_location = temp_texture_width_loc,
-            .texture_height_location = temp_texture_height_loc,
-        };
-        //var result.texture_width: f32 = 64.0 * 3.0;
-        //var temp_shader_texture_height: f32 = 32.0;
-
-        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
-        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
-        return result;
-    }
-
-    pub fn set_render_width(self: *ShaderPixalizer, new_render_width: f32) f32 {
-        self.*.render_width = new_render_width;
-        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_width;
-    }
-
-    pub fn set_render_height(self: *ShaderPixalizer, new_render_height: f32) f32 {
-        self.*.render_height = new_render_height;
-        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_height;
-    }
-};
-
-const ShaderPixalizer = struct {
-    shader: ray.Shader = undefined,
-    grid_size: f32 = 1.0,
-    grid_size_location: c_int = undefined,
-    texture_width: f32 = 64.0 * 3.0, // this makes it split by 3 per pixel instead of 1 per pixel
-    texture_width_location: c_int = undefined,
-    texture_height: f32 = 32.0,
-    texture_height_location: c_int = undefined,
-
-    pub fn new(shader_val: ray.Shader) ShaderPixalizer {
-        const temp_grid_size_loc = ray.GetShaderLocation(shader_val, "grid_size");
-        const temp_texture_width_loc = ray.GetShaderLocation(shader_val, "renderWidth");
-        const temp_texture_height_loc = ray.GetShaderLocation(shader_val, "renderHeight");
-        var result = ShaderPixalizer{
-            .shader = shader_val,
-            .grid_size_location = temp_grid_size_loc,
-            .texture_width_location = temp_texture_width_loc,
-            .texture_height_location = temp_texture_height_loc,
-        };
-
-        ray.SetShaderValue(result.shader, result.grid_size_location, &result.grid_size, ray.SHADER_UNIFORM_FLOAT);
-        ray.SetShaderValue(result.shader, result.texture_width_location, &result.texture_width, ray.SHADER_UNIFORM_FLOAT);
-        ray.SetShaderValue(result.shader, result.texture_height_location, &result.texture_height, ray.SHADER_UNIFORM_FLOAT);
-        return result;
-    }
-
-    pub fn set_grid_size(self: *ShaderPixalizer, new_grid_size: f32) f32 {
-        self.*.grid_size = new_grid_size;
-        ray.SetShaderValue(self.*.shader, self.*.grid_size_location, &self.*.grid_size, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.grid_size;
-    }
-
-    pub fn set_render_width(self: *ShaderPixalizer, new_render_width: f32) f32 {
-        self.*.render_width = new_render_width;
-        ray.SetShaderValue(self.*.shader, self.*.render_width_location, &self.*.render_width, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_width;
-    }
-
-    pub fn set_render_height(self: *ShaderPixalizer, new_render_height: f32) f32 {
-        self.*.render_height = new_render_height;
-        ray.SetShaderValue(self.*.shader, self.*.render_height_location, &self.*.render_height, ray.SHADER_UNIFORM_FLOAT);
-        return self.*.render_height;
+        if (!i_id.found_existing) {
+            i_id.value_ptr.* = ray.GetShaderLocation(self.*.shader, @ptrCast([*c]const u8, p_id));
+        }
+        ray.SetShaderValue(self.*.shader, i_id.value_ptr.*, &p_new_val, ray.SHADER_UNIFORM_FLOAT);
     }
 };
 
@@ -306,9 +196,8 @@ pub fn main() !void {
     chip8.load_game("roms/IBM_Logo.ch8");
 
     while (!ray.WindowShouldClose() and !exitWindow) {
-        _ = shader_pixalizer.set_grid_size(1.35);
         //_ = shader_stretcher.set_stretch_amount(slider / 100.0);
-        shader_stretcher.set_float(shader_stretcher_stretch_amount, slider / 100.0);
+        shader_stretcher.set_float("stretch_amount", slider / 100.0);
         ray.BeginDrawing();
         defer ray.EndDrawing();
 
@@ -320,7 +209,7 @@ pub fn main() !void {
             return;
         };
 
-        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Pixel Size", @ptrCast([*c]const u8, slider_str), slider, slider_min, slider_max);
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Curve Amount", @ptrCast([*c]const u8, slider_str), slider, slider_min, slider_max);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -342,19 +231,26 @@ fn setup_graphics() void {
     chip8_screen = ray.LoadRenderTexture(64, 32);
     temp_canvas = ray.LoadRenderTexture(64 * scale, 32 * scale);
 
-    shader_stretcher = Shader.new(ray.LoadShader(0, "shaders/stretcher.fs"));
-    shader_stretcher_stretch_amount = ray.GetShaderLocation(shader_stretcher.shader, "stretch_amount");
-    shader_stretcher.set_float(ray.GetShaderLocation(shader_stretcher.shader, "renderWidth"), 64.0);
-    shader_stretcher.set_float(ray.GetShaderLocation(shader_stretcher.shader, "renderHeight"), 32.0);
-    shader_stretcher.set_float(shader_stretcher_stretch_amount, slider / 100.0);
+    shader_stretcher = Shader.new(ray.LoadShader(0, "shaders/stretcher.fs"), allocator);
+    shader_stretcher.set_float("renderWidth", 64.0);
+    shader_stretcher.set_float("renderHeight", 32.0);
+    shader_stretcher.set_float("stretch_amount", slider / 100.0);
 
-    shader_colour_splitter = ShaderColourSplitter.new(ray.LoadShader(0, "shaders/colour_splitter.fs"));
-    shader_pixalizer = ShaderPixalizer.new(ray.LoadShader(0, "shaders/pixalizer.fs"));
+    shader_colour_splitter = Shader.new(ray.LoadShader(0, "shaders/colour_splitter.fs"), allocator);
+    shader_colour_splitter.set_float("renderWidth", 64.0);
+    shader_colour_splitter.set_float("renderHeight", 32.0);
+
+    shader_pixalizer = Shader.new(ray.LoadShader(0, "shaders/pixalizer.fs"), allocator);
+    shader_pixalizer.set_float("grid_size", 1.35);
+    shader_pixalizer.set_float("renderWidth", 64.0 * 3.0);
+    shader_pixalizer.set_float("renderHeight", 32.0);
 
     ray.SetTargetFPS(60);
 }
 
 fn close_graphics() void {
+    ray.UnloadShader(shader_stretcher.shader);
+    ray.UnloadShader(shader_colour_splitter.shader);
     ray.UnloadShader(shader_pixalizer.shader);
     ray.CloseWindow();
 }
