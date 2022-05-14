@@ -11,6 +11,8 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
+    // wasm32-freestanding-musl
+
     const exe = b.addExecutable("testraylib", "src/main.zig");
     exe.linkSystemLibrary("c");
     exe.linkSystemLibrary("raylib");

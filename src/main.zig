@@ -24,7 +24,7 @@ var shader_stretcher: Shader = undefined;
 var shader_colour_splitter: Shader = undefined;
 var shader_pixalizer: Shader = undefined;
 
-var slider: f32 = 0;
+var slider: f32 = -105;
 const slider_max: f32 = 0;
 const slider_min: f32 = -250;
 
@@ -209,7 +209,7 @@ pub fn main() !void {
             return;
         };
 
-        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Curve Amount", @ptrCast([*c]const u8, slider_str), slider, slider_min, slider_max);
+        slider = ray.GuiSlider(ray.Rectangle{ .x = 70, .y = 32 * scale + 24 + 10, .width = (64 * scale) - 128, .height = 30 }, "Curve", @ptrCast([*c]const u8, slider_str), slider, slider_min, slider_max);
 
         if (delay == execute_delay) {
             chip8.emulate_cycles(1);
@@ -273,10 +273,21 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
     ray.EndTextureMode();
 
     ray.BeginTextureMode(temp_canvas);
-    ray.BeginShaderMode(shader_pixalizer.shader);
     ray.DrawTexturePro(
         screen.texture,
         ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, screen.texture.width), .height = @intToFloat(f32, screen.texture.height) },
+        ray.Rectangle{ .x = 0, .y = 0, .width = 64 * scale, .height = 32 * scale },
+        ray.Vector2{ .x = 0, .y = 0 },
+        0,
+        ray.WHITE,
+    );
+    ray.EndTextureMode();
+
+    ray.BeginTextureMode(temp_canvas);
+    ray.BeginShaderMode(shader_pixalizer.shader);
+    ray.DrawTexturePro(
+        temp_canvas.texture,
+        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
         ray.Rectangle{ .x = 0, .y = 0, .width = 64 * scale, .height = 32 * scale },
         ray.Vector2{ .x = 0, .y = 0 },
         0,
@@ -290,7 +301,7 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
     ray.DrawTexturePro(
         temp_canvas.texture,
         ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
-        ray.Rectangle{ .x = 0, .y = 24, .width = 64 * scale, .height = 32 * scale },
+        ray.Rectangle{ .x = 0, .y = 0, .width = 64 * scale, .height = 32 * scale },
         ray.Vector2{ .x = 0, .y = 0 },
         0,
         ray.WHITE,
@@ -298,14 +309,16 @@ fn update_screen(screen: *ray.RenderTexture, pixels: [2048]bool) void {
     ray.EndShaderMode();
     ray.EndTextureMode();
 
+    //ray.BeginTextureMode(temp_canvas);
     ray.BeginShaderMode(shader_stretcher.shader);
     ray.DrawTexturePro(
         temp_canvas.texture,
-        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = @intToFloat(f32, temp_canvas.texture.height) },
+        ray.Rectangle{ .x = 0, .y = 0, .width = @intToFloat(f32, temp_canvas.texture.width), .height = -@intToFloat(f32, temp_canvas.texture.height) },
         ray.Rectangle{ .x = 0, .y = 24, .width = 64 * scale, .height = 32 * scale },
         ray.Vector2{ .x = 0, .y = 0 },
         0,
         ray.WHITE,
     );
     ray.EndShaderMode();
+    //ray.EndTextureMode();
 }
