@@ -2,6 +2,16 @@
 
 My in progress emulator(interpreter?) project for learning Zig :^)
 
-Currently has only enough Opcodes implemented to run the basic IBM example (^:
+Currently it is only has enough instructions to run the basic IBM example. I got distracted making shaders in GLSL. I plan to eventually return to writing the core functionality as well as adding a web export.
 
-Has some very nice custom made shaders which give it that retro feel :D
+## Shaders
+
+Here is an image showing each step of the shader process. The first image(top left) is using the default Raylib shader, here all the pixels are simply rendered as white squares with no gaps.  
+
+The first custom shader(top right image) I implemented is a "pixalizer" shader where I split up each individual square "pixel" into a group of 3 separated rectangles.
+
+In the second shader(bottom left) I implemented I colour each of these rectangles alternating between red, green, and blue.
+
+Finally in the last shader(bottom right image) I created a screen warping effect to complete the effect of appearing like a CRT screen.
+
+![Shaders](https://github.com/realtradam/zig-chip-8/blob/master/shadersample.png?raw=true)
