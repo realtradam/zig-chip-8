@@ -4,3 +4,6 @@ zig-out
 zig-out/*
 src/zig-cache
 src/zig-cache/*
+lib
+lib/*
+shaders/glsl*
